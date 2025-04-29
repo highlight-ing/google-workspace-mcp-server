@@ -75,6 +75,7 @@ class GoogleWorkspaceServer {
                 description: "Search query to filter emails",
               },
             },
+            required: [],
           },
         },
         {
@@ -169,6 +170,7 @@ class GoogleWorkspaceServer {
                 description: "End time in ISO format",
               },
             },
+            required: [],
           },
         },
         {
