@@ -62,7 +62,7 @@ class GoogleWorkspaceServer {
       tools: [
         {
           name: "list_emails",
-          description: "List recent emails from Gmail inbox",
+          description: "List recent emails from Gmail inbox including email content",
           inputSchema: {
             type: "object",
             properties: {
@@ -80,7 +80,7 @@ class GoogleWorkspaceServer {
         },
         {
           name: "search_emails",
-          description: "Search emails with advanced query",
+          description: "Search emails with advanced query including email content",
           inputSchema: {
             type: "object",
             properties: {
@@ -308,6 +308,7 @@ class GoogleWorkspaceServer {
           const detail = await this.gmail.users.messages.get({
             userId: "me",
             id: msg.id!,
+            format: "full",
           });
 
           const headers = detail.data.payload?.headers;
@@ -315,12 +316,16 @@ class GoogleWorkspaceServer {
             headers?.find((h) => h.name === "Subject")?.value || "";
           const from = headers?.find((h) => h.name === "From")?.value || "";
           const date = headers?.find((h) => h.name === "Date")?.value || "";
+          
+          // Simplify body extraction
+          let body = this.extractBodyText(detail.data.payload);
 
           return {
             id: msg.id,
             subject,
             from,
             date,
+            body,
           };
         })
       );
@@ -363,6 +368,7 @@ class GoogleWorkspaceServer {
           const detail = await this.gmail.users.messages.get({
             userId: "me",
             id: msg.id!,
+            format: "full",
           });
 
           const headers = detail.data.payload?.headers;
@@ -370,12 +376,16 @@ class GoogleWorkspaceServer {
             headers?.find((h) => h.name === "Subject")?.value || "";
           const from = headers?.find((h) => h.name === "From")?.value || "";
           const date = headers?.find((h) => h.name === "Date")?.value || "";
+          
+          // Simplify body extraction
+          let body = this.extractBodyText(detail.data.payload);
 
           return {
             id: msg.id,
             subject,
             from,
             date,
+            body,
           };
         })
       );
@@ -665,6 +675,57 @@ class GoogleWorkspaceServer {
         isError: true,
       };
     }
+  }
+
+  // Helper method to extract simplified body text
+  private extractBodyText(payload: any): string {
+    if (!payload) return "";
+    
+    // Try to get plain text version first
+    const extractText = (part: any): string => {
+      if (!part) return "";
+      
+      // Prefer plain text content when available
+      if (part.mimeType === "text/plain" && part.body?.data) {
+        return Buffer.from(part.body.data, 'base64').toString('utf-8');
+      } 
+      
+      // Fall back to html content if necessary, but strip HTML tags
+      if (part.mimeType === "text/html" && part.body?.data) {
+        const htmlContent = Buffer.from(part.body.data, 'base64').toString('utf-8');
+        return this.stripHtmlTags(htmlContent);
+      }
+      
+      // Handle multipart recursively
+      if (part.parts) {
+        // First try to find plain text parts
+        const plainTextParts = part.parts
+          .filter((p: any) => p.mimeType === "text/plain")
+          .map(extractText)
+          .filter(Boolean);
+          
+        if (plainTextParts.length > 0) {
+          return plainTextParts.join("\n");
+        }
+        
+        // Fall back to all parts if no plain text
+        return part.parts.map(extractText).filter(Boolean).join("\n");
+      }
+      
+      return "";
+    };
+    
+    return extractText(payload);
+  }
+  
+  // Helper to strip HTML tags
+  private stripHtmlTags(html: string): string {
+    return html
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
   }
 
   async run() {
